@@ -57,6 +57,9 @@ SUPPORT_WIDGET_TYPES = {
     qt.RadioButtonGroup: UiPropertyWidgetUpdate('toggled', [UiPropertyGetSet('checked_index', 'set_checked')]),
     qt.SearchLineEdit: UiPropertyWidgetUpdate('textChanged', [UiPropertyGetSet('text', 'setText')]),
     qt.BaseLineEdit: UiPropertyWidgetUpdate('textChanged', [UiPropertyGetSet('text', 'setText')]),
+    qt.StringLineEditWidget: UiPropertyWidgetUpdate('textChanged', [UiPropertyGetSet('text', 'set_text')]),
+    qt.FloatLineEditWidget: UiPropertyWidgetUpdate('textChanged', [UiPropertyGetSet('value', 'set_value')]),
+    qt.IntLineEditWidget: UiPropertyWidgetUpdate('textChanged', [UiPropertyGetSet('value', 'set_value')]),
     qt.QLineEdit: UiPropertyWidgetUpdate('textChanged', [UiPropertyGetSet('text', 'setText')]),
     qt.QCheckBox: UiPropertyWidgetUpdate('toggled', [UiPropertyGetSet('isChecked', 'setChecked')])
 }
@@ -207,9 +210,17 @@ class Tool(qt.QObject):
 
         return []
 
-    def reset_properties(self):
+    def reset_properties(self, update_widgets: bool = True):
+        """Resets all UI properties and optionally updates linked widgets with those values.
+
+        :param bool update_widgets: whether to update widgets after resetting UI propreties.
+        """
+
         for ui_property in self.properties.values():
             ui_property.value = ui_property.default
+
+        if update_widgets:
+            self.update_widgets_from_properties()
 
     def setup_properties(self, properties: helpers.ObjectDict | None = None) -> helpers.ObjectDict:
         """
@@ -368,10 +379,10 @@ class Tool(qt.QObject):
                 setter = getattr(widget, getset.setter)
                 try:
                     setter(value)
-                except TypeError:
+                except TypeError as err:
                     raise TypeError(
                         f'Unable to set widget attribute method: {widget_name}; property: {getset.setter}; '
-                        f'value: {value}')
+                        f'value: {value}: {err}')
                 modified = True
         if not modified and self._show_warnings:
             logger.warning(f'Unsupported widget: {widget}. Property: {widget_name}')
