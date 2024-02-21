@@ -13,7 +13,10 @@ import traceback
 from typing import Iterator, Any
 from dataclasses import dataclass, field
 
+from Qt.QtCore import Signal
+
 from tp.core import log
+from tp.dcc import callback
 from tp.common.python import helpers, decorators
 from tp.common import plugin
 from tp.common.qt import api as qt
@@ -72,6 +75,8 @@ class Tool(qt.QObject):
 
     ID: str = ''
 
+    closed = Signal()
+
     def __init__(self, factory: plugin.PluginFactory, tools_manager: ToolsManager):
         super(Tool, self).__init__()
 
@@ -84,6 +89,8 @@ class Tool(qt.QObject):
         self._stacked_widget: qt.QStackedWidget | None = None
         self._show_warnings: bool = True
         self._block_save: bool = False
+        self._closed = False
+        self._callbacks = callback.FnCallback()
 
     @decorators.classproperty
     def id(cls) -> str:
@@ -151,6 +158,17 @@ class Tool(qt.QObject):
 
         return self._properties
 
+    @property
+    def callbacks(self) -> callback.FnCallback:
+        """
+        Returns callback function set used by this tool, which allows to register new callbacks.
+
+        :return: callback function set.
+        :rtype: callback.FnCallback
+        """
+
+        return self._callbacks
+
     @staticmethod
     def widget_property_name(widget: qt.QWidget) -> str:
         """
@@ -169,6 +187,7 @@ class Tool(qt.QObject):
         """
 
         win = qt.FramelessWindow()
+        win.closed.connect(self.closed.emit)
         win.set_title(self.ui_data.label)
         self._stacked_widget = qt.QStackedWidget(parent=win)
         win.main_layout().addWidget(self._stacked_widget)
@@ -187,6 +206,7 @@ class Tool(qt.QObject):
         self.save_properties()
 
         win.show()
+        win.closed.connect(self._run_teardown)
 
         return win
 
@@ -530,7 +550,7 @@ class Tool(qt.QObject):
         Function that shutdown tool.
         """
 
-        pass
+        self._callbacks.clear()
 
     def set_stylesheet(self, style):
         pass
@@ -563,7 +583,12 @@ class Tool(qt.QObject):
         Internal function that tries to tear down the tool in a safe way.
         """
 
+        if self._closed:
+            logger.warning(f'Tool f"{self}" already closed')
+            return
+
         try:
             self.teardown()
+            self._closed = True
         except RuntimeError:
             logger.error(f'Failed to teardown tool: {self.id}', exc_info=True)
